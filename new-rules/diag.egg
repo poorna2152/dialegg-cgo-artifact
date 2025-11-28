@@ -1,0 +1,55 @@
+(include "src/base.egg")
+
+;; linalg dialect
+(function linalg_matmul (Op Op Op Type) Op)
+(function linalg_broadcast (Op Op Type) Op)
+(function linalg_add (Op Op Op Type) Op)
+(function linalg_fill (Op Op Type) Op)
+(function linalg_mul (Op Op Op Type) Op)
+
+(function diagonal (Op Type) Op)
+
+;; tensor dialect
+(function tensor_empty (Type) Op)
+
+;; OPS HERE ;;
+
+;; RULES HERE ;;
+(ruleset rules)
+
+(rule ((= ?A (Value ?id ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+(rule ((= ?A (linalg_matmul ?x ?y ?out ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+(rule ((= ?A (linalg_add ?x ?y ?out ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+(rule ((= ?A (tensor_empty ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+(rule ((= ?A (linalg_broadcast ?x ?out ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+(rule ((= ?A (linalg_mul ?x ?y ?out ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+(rule ((= ?A (diagonal ?x ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+
+(rule
+  ((= ?m (linalg_matmul ?x ?y ?out (RankedTensor ?shape ?tp)))
+   (= a (vec-get ?shape 0))
+   (= b (vec-get ?shape 1)))
+  ((unstable-cost (linalg_matmul ?x ?y ?out (RankedTensor ?shape ?tp)) (* a (* a b))))
+  :ruleset rules)
+
+(rule
+  ((= ?m (linalg_mul ?x ?y ?out (RankedTensor ?shape ?tp)))
+   (= a (vec-get ?shape 0))
+   (= b (vec-get ?shape 1)))
+  ((unstable-cost (linalg_mul ?x ?y ?out (RankedTensor ?shape ?tp)) (+ a b)))
+  :ruleset rules)
+
+(rule
+  ((= ?lhs (linalg_matmul ?d ?y ?out (RankedTensor ?shape ?tp))))
+  ((let ?n_row (vec-get ?shape 0))
+   (let ?diag_shape (vec-of ?n_row))
+   (let ?diag_t (RankedTensor ?diag_shape ?tp))
+   (let ?diag_vec (diagonal ?d ?diag_t))
+   (let ?out_buf (tensor_empty (RankedTensor ?shape ?tp)))
+   (let ?broadcasted (linalg_broadcast ?diag_vec ?out_buf (RankedTensor ?shape ?tp)))
+   (union ?lhs (linalg_mul ?broadcasted ?y ?out (RankedTensor ?shape ?tp))))
+  :ruleset rules)
+
+(run-schedule (saturate rules))
+
+;; EXTRACTS HERE ;;

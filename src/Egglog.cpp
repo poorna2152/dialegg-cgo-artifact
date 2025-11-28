@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 
 #include "Egglog.h"
 #include "EqualitySaturationPass.h"
@@ -144,6 +145,10 @@ std::string Egglog::dialectFromName(std::string op) {
 }
 
 std::string Egglog::opNameFromName(std::string op) {
+    if (op.find_first_of('.') == std::string::npos && op.find_first_of('_') == std::string::npos) {
+        return op;
+    }
+
     bool isDot = op.find_first_of('.') != std::string::npos;
 
     // split by the dot or underscore
@@ -636,7 +641,7 @@ mlir::Operation* Egglog::parseOperation(const std::string& newOpStr, mlir::OpBui
 
     std::replace(opName.begin(), opName.end(), '_', '.');  // Replace underscores with dots
     EgglogOpDef egglogOpDef = supportedEgglogOps.at(opName);
-    std::string mlirOpName = egglogOpDef.dialect + "." + egglogOpDef.name;
+    std::string mlirOpName = egglogOpDef.dialect.empty() ? egglogOpDef.name : egglogOpDef.dialect + "." + egglogOpDef.name;
 
     size_t index = 0;
 
@@ -649,7 +654,7 @@ mlir::Operation* Egglog::parseOperation(const std::string& newOpStr, mlir::OpBui
             mlir::Value operand = parseValue(operandStr);
             operands.push_back(operand);
         } else {  // new operation
-            mlir::Operation* nestedOperand = parseOperation(operandStr, builder);
+                mlir::Operation* nestedOperand = parseOperation(operandStr, builder);
             mlir::Value operand = nestedOperand->getResult(0);  // TODO support multiple results?
             operands.push_back(operand);
         }
@@ -686,7 +691,40 @@ mlir::Operation* Egglog::parseOperation(const std::string& newOpStr, mlir::OpBui
             newOp = builder.create<mlir::linalg::TransposeOp>(mlir::UnknownLoc::get(&context), operands[0], operands[1], attr.cast<mlir::DenseI64ArrayAttr>());
         } else if (op == "matmul") {
             newOp = builder.create<mlir::linalg::MatmulOp>(mlir::UnknownLoc::get(&context), operands[2].getType(), llvm::ArrayRef<mlir::Value> {operands[0], operands[1]}, operands[2]);
+        } else if (op == "add") {
+            newOp = builder.create<mlir::linalg::AddOp>(mlir::UnknownLoc::get(&context), operands[2].getType(), llvm::ArrayRef<mlir::Value> {operands[0], operands[1]}, operands[2]);
+        } else if (op == "fill") {
+            newOp = builder.create<mlir::linalg::FillOp>(mlir::UnknownLoc::get(&context), operands[1].getType(), operands[0], operands[1]);
+        } else if (op == "broadcast") {
+            mlir::OperationState state(mlir::UnknownLoc::get(&context), "linalg.broadcast");
+            state.addOperands({operands[0]});
+            state.addOperands({operands[1]});
+            state.addTypes({operands[1].getType()});
+            // Add dimensions attribute
+            state.addAttribute("dimensions", mlir::DenseI64ArrayAttr::get(&context, llvm::ArrayRef<int64_t>({0})));
+            // Add region
+            mlir::Region* region = state.addRegion();
+            mlir::Block* block = new mlir::Block();
+            mlir::ShapedType inputType = operands[0].getType().cast<mlir::ShapedType>();
+            mlir::ShapedType outputType = operands[1].getType().cast<mlir::ShapedType>();
+            block->addArgument(inputType.getElementType(), mlir::UnknownLoc::get(&context));
+            block->addArgument(outputType.getElementType(), mlir::UnknownLoc::get(&context));
+            region->push_back(block);
+            mlir::OpBuilder regionBuilder(&context);
+            regionBuilder.setInsertionPointToStart(block);
+            mlir::Value input = block->getArgument(0);
+            regionBuilder.create<mlir::linalg::YieldOp>(mlir::UnknownLoc::get(&context), input);
+            newOp = builder.create(state);
+        } else if (op == "mul") {
+            newOp = builder.create<mlir::linalg::MulOp>(
+            mlir::UnknownLoc::get(&context),
+            llvm::ArrayRef<mlir::Value>{operands[0], operands[1]},  // input tensors
+            llvm::ArrayRef<mlir::Value>{operands[2]}                // output tensor
+        );
         }
+    } else if (opName == "diagonal") {
+        std::string funcName = "diagonal";
+        newOp = builder.create<mlir::func::CallOp>(mlir::UnknownLoc::get(&context), funcName, types, operands);
     } else {  // other ops that have no hidden region, thus are easy to create with OperationState
         mlir::OperationState state(mlir::UnknownLoc::get(&context), mlirOpName);
         state.addOperands(operands);

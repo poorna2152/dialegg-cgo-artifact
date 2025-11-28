@@ -4,7 +4,7 @@ project(egg-opt LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 17)
 
 set(LLVM_DIR ~/dev/lib/llvm/build-release/lib/cmake/llvm)
-set(CMAKE_BUILD_TYPE Release)  # Set -DCMAKE_BUILD_TYPE to "Release" to build with optimizations
+set(CMAKE_BUILD_TYPE Debug)  # Set -DCMAKE_BUILD_TYPE to "Release" to build with optimizations
 find_package(LLVM REQUIRED CONFIG)
 if ("${LLVM_VERSION_MAJOR}" VERSION_LESS 18)
     message(FATAL_ERROR "Found LLVM ${LLVM_VERSION_MAJOR}, but need LLVM 18 or above")

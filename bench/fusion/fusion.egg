@@ -1,0 +1,57 @@
+(include "src/base.egg")
+
+;; linalg dialect
+(function linalg_matmul (Op Op Op Type) Op)
+(function linalg_add (Op Op Op Type) Op)
+(function linalg_fill (Op Op Type) Op)
+
+;; tensor dialect
+(function tensor_empty (Type) Op)
+
+;; OPS HERE ;;
+
+;; RULES HERE ;;
+(ruleset rules)
+
+(rule ((= ?A (Value ?id ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+(rule ((= ?A (linalg_matmul ?x ?y ?out ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+(rule ((= ?A (linalg_add ?x ?y ?out ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+(rule ((= ?A (tensor_empty ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+(rule ((= ?A (linalg_fill ?const ?out ?t))) ((set (type-of ?A) ?t)) :ruleset rules)
+
+(function nrows (Type) i64)
+(function ncols (Type) i64)
+(rule
+  ((= ?t (RankedTensor ?shape ?tp)))
+  ((set (nrows ?t) (vec-get ?shape 0))
+   (set (ncols ?t) (vec-get ?shape 1)))
+  :ruleset rules)
+
+(rule
+  ((= ?m (linalg_matmul ?x ?y ?out ?res))
+   (= a (nrows (type-of ?x)))
+   (= b (ncols (type-of ?x)))
+   (= c (ncols (type-of ?y))))
+  ((unstable-cost (linalg_matmul ?x ?y ?out ?res) (* (* a b) c)))
+  :ruleset rules)
+
+(rule
+  ((= ?m (linalg_add ?x ?y ?out ?res))
+   (= a (nrows (type-of ?x)))
+   (= b (ncols (type-of ?x))))
+  ((unstable-cost (linalg_add ?x ?y ?out ?res) (+ a b)))
+  :ruleset rules)
+
+(rule
+  ((= ?lhs (linalg_add (linalg_matmul ?a ?b ?ab_buf ?ab_ty) (linalg_matmul ?a ?c ?ac_buf ?ac_ty) ?out_buf ?ty)))
+  ((let ?b_ty (type-of ?b))
+   (let ?bc_buf (tensor_empty ?b_ty))
+   (let ?bc_res (linalg_add ?b ?c ?bc_buf ?b_ty))
+   (let ?a_bc_buf (tensor_empty ?ty))
+   (let ?a_bc_res (linalg_matmul ?a ?bc_res ?a_bc_buf ?ty))
+   (union ?lhs ?a_bc_res))
+  :ruleset rules)
+
+(run-schedule (saturate rules))
+
+;; EXTRACTS HERE ;;

@@ -31,7 +31,7 @@ echo
 echo
 echo "--------------------- Building DialEgg ---------------------"
 mkdir build
-cmake -S . -B build -G Ninja
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 
 # Build libutil

@@ -196,6 +196,9 @@ void EqualitySaturationPass::init() {
 
             supportedOps.emplace(parsedOp.dialect + "." + parsedOp.name + (parsedOp.version.empty() ? "" : "." + parsedOp.version), parsedOp);
             supportedOps.emplace(parsedOp.dialect + "_" + parsedOp.name + (parsedOp.version.empty() ? "" : "_" + parsedOp.version), parsedOp);
+            if (parsedOp.dialect.empty()) {
+                supportedOps.emplace(parsedOp.name, parsedOp);
+            }
             supportedDialects.insert(parsedOp.dialect);
         }
     }
@@ -221,6 +224,10 @@ void EqualitySaturationPass::runOnOperation() {
 
     mlir::func::FuncOp rootOp = getOperation();
     llvm::StringRef rootOpName = rootOp.getName();
+
+    if (rootOpName == "diagonal") {
+        return;
+    }
 
     llvm::outs() << "Running on function: " << rootOpName << "\n";
     llvm::outs() << "-----------------------------------------\n";
