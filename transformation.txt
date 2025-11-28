@@ -1,0 +1,21 @@
+1. Matrix multiplication order
+
+(A*B)*C → A*(B*C)
+
+Cost depends on dimensions: FLOPs = rows*cols*inner
+
+Guarantees correctness, but speedup is shape-dependent
+
+2. Fusion of elementwise ops over matrices
+
+(A*B) + (A*C) → A*(B+C)
+
+Reduces number of matrix multiplications.
+
+Speedup depends on sparsity / size of matrices and memory layout.
+
+3. Diagonal / sparse matrix special cases
+
+Multiplying a diagonal matrix:
+
+diag(D)*A → scale_rows(D,A)
